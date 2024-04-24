@@ -10,60 +10,31 @@ fi
 
 # Get the hostname of the server
 server_hostname=$(hostname)
-
-# Path to the main CSV file with the hostname included in the filename
+# Paths to the CSV files
 output_file="${inventory_dir}/${server_hostname}_oracle_databases_info.csv"
-
-# Path to the backup details CSV file
 backup_output_file="${inventory_dir}/${server_hostname}_oracle_backup_details.csv"
-
-# Path to the feature usage JSON file
 feature_usage_output_file="${inventory_dir}/${server_hostname}_oracle_feature_usage.json"
-
-# Path to the connected machines CSV file
 oracle_connected_machines_csv="${inventory_dir}/${server_hostname}_oracle_connected_machines.csv"
-
-# Path to the ASM disks info CSV file
 asm_disks_info_csv="${inventory_dir}/${server_hostname}_asm_disks_info.csv"
-
-# Path to the ASM disk usage CSV file
 asm_disk_usage_csv="${inventory_dir}/${server_hostname}_asm_disk_usage.csv"
 
-# Path to the ASM disk usage TXT file
+# Paths to the TXT files
 asm_disk_usage_txt="${inventory_dir}/${server_hostname}_asm_disk_usage.txt"
-
-# Path to the ASM disks info TXT file
 asm_disks_info_txt="${inventory_dir}/${server_hostname}_asm_disks_info.txt"
-
-# Path to the ASM disks SQL query TXT file
 asm_disks_sql_txt="${inventory_dir}/${server_hostname}_asm_disks_sql.txt"
-
-# Path to the connected machines SQL query TXT file
 connected_machines_sql_txt="${inventory_dir}/${server_hostname}_connected_machines_sql.txt"
-
-# Path to the feature usage SQL query TXT file
 feature_usage_sql_txt="${inventory_dir}/${server_hostname}_feature_usage_sql.txt"
-
-# Path to the backup details SQL query TXT file
 backup_details_sql_txt="${inventory_dir}/${server_hostname}_backup_details_sql.txt"
 
-# CSV file header for the main file
+# CSV file headers
 echo "Hostname,Database Name,Database Size (GB),ArchiveLog Mode,Software Version,Oracle Home,Alert Log Path,Database Role,Device Backup Type" > $output_file
-
-# CSV file header for the backup details file
 echo "Hostname,Database Name,Input Type,Status,Start Time,End Time,Input Size (GB),Duration" > $backup_output_file
+echo "Hostname,Database Name,Machine" > $oracle_connected_machines_csv
+echo "Hostname,Group,Name,Path,Size,Device Path" > $asm_disks_info_csv
+echo "Hostname,Name,Free GB,Total GB,Used GB,Used Percent,Free Percent" > $asm_disk_usage_csv
 
 # Initialize JSON file for feature usage
 echo "[" > $feature_usage_output_file
-
-# CSV file header for connected machines
-echo "Hostname,Database Name,Machine" > $oracle_connected_machines_csv
-
-# CSV file header for ASM disks info
-echo "Hostname,Group,Name,Path,Size,Device Path" > $asm_disks_info_csv
-
-# CSV file header for ASM disk usage
-echo "Hostname,Name,Free GB,Total GB,Used GB,Used Percent,Free Percent" > $asm_disk_usage_csv
 
 # Reading from /etc/oratab
 while read line
