@@ -175,7 +175,7 @@ EOF
         # Writing results to the CSV file for connected machines
         while IFS= read -r machine; do
             if [[ -n "$machine" ]]; then # Checking if machine name is not empty
-                echo "$server_hostname,$db_name,$machine,$oracle_connected_machines_csv" >> $oracle_connected_machines_csv
+                echo "$server_hostname,$db_name,$machine" >> $oracle_connected_machines_csv
             fi
         done <<< "$connected_machines"
     fi
@@ -246,3 +246,8 @@ fi
 
 # Set permissions for the inventory directory
 chmod -R 755 "$inventory_dir"
+
+# Print success message
+echo "Oracle database information collected successfully."
+# Print directory path 
+echo "Inventory directory: $inventory_dir"
