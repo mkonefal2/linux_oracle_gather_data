@@ -1,16 +1,51 @@
 #!/bin/bash
 
+# Define directory for Oracle inventory files
+inventory_dir="/tmp/ora_inventory"
+
+# Create Oracle inventory directory if it doesn't exist
+if [ ! -d "$inventory_dir" ]; then
+    mkdir -p "$inventory_dir"
+fi
+
 # Get the hostname of the server
 server_hostname=$(hostname)
 
 # Path to the main CSV file with the hostname included in the filename
-output_file="/tmp/${server_hostname}_oracle_databases_info.csv"
+output_file="${inventory_dir}/${server_hostname}_oracle_databases_info.csv"
 
 # Path to the backup details CSV file
-backup_output_file="/tmp/${server_hostname}_oracle_backup_details.csv"
+backup_output_file="${inventory_dir}/${server_hostname}_oracle_backup_details.csv"
 
 # Path to the feature usage JSON file
-feature_usage_output_file="/tmp/${server_hostname}_oracle_feature_usage.json"
+feature_usage_output_file="${inventory_dir}/${server_hostname}_oracle_feature_usage.json"
+
+# Path to the connected machines CSV file
+oracle_connected_machines_csv="${inventory_dir}/${server_hostname}_oracle_connected_machines.csv"
+
+# Path to the ASM disks info CSV file
+asm_disks_info_csv="${inventory_dir}/${server_hostname}_asm_disks_info.csv"
+
+# Path to the ASM disk usage CSV file
+asm_disk_usage_csv="${inventory_dir}/${server_hostname}_asm_disk_usage.csv"
+
+# Path to the ASM disk usage TXT file
+asm_disk_usage_txt="${inventory_dir}/${server_hostname}_asm_disk_usage.txt"
+
+# Path to the ASM disks info TXT file
+asm_disks_info_txt="${inventory_dir}/${server_hostname}_asm_disks_info.txt"
+
+# Path to the ASM disks SQL query TXT file
+asm_disks_sql_txt="${inventory_dir}/${server_hostname}_asm_disks_sql.txt"
+
+# Path to the connected machines SQL query TXT file
+connected_machines_sql_txt="${inventory_dir}/${server_hostname}_connected_machines_sql.txt"
+
+# Path to the feature usage SQL query TXT file
+feature_usage_sql_txt="${inventory_dir}/${server_hostname}_feature_usage_sql.txt"
+
+# Path to the backup details SQL query TXT file
+backup_details_sql_txt="${inventory_dir}/${server_hostname}_backup_details_sql.txt"
 
 # CSV file header for the main file
 echo "Hostname,Database Name,Database Size (GB),ArchiveLog Mode,Software Version,Oracle Home,Alert Log Path,Database Role,Device Backup Type" > $output_file
@@ -20,6 +55,15 @@ echo "Hostname,Database Name,Input Type,Status,Start Time,End Time,Input Size (G
 
 # Initialize JSON file for feature usage
 echo "[" > $feature_usage_output_file
+
+# CSV file header for connected machines
+echo "Hostname,Database Name,Machine" > $oracle_connected_machines_csv
+
+# CSV file header for ASM disks info
+echo "Hostname,Group,Name,Path,Size,Device Path" > $asm_disks_info_csv
+
+# CSV file header for ASM disk usage
+echo "Hostname,Name,Free GB,Total GB,Used GB,Used Percent,Free Percent" > $asm_disk_usage_csv
 
 # Reading from /etc/oratab
 while read line
@@ -47,10 +91,17 @@ select log_mode from v\$database;
 select version from v\$instance;
 select value from GV\$DIAG_INFO WHERE name='Diag Trace';
 select database_role from v\$database;
-SELECT OUTPUT_DEVICE_TYPE AS "DEVICE_BACKUP_TYPE" FROM V\$RMAN_BACKUP_JOB_DETAILS WHERE rownum = 1;
+SELECT OUTPUT_DEVICE_TYPE AS "DEVICE_BACKUP_TYPE"
+FROM (
+    SELECT OUTPUT_DEVICE_TYPE, START_TIME
+    FROM V\$RMAN_BACKUP_JOB_DETAILS
+    WHERE OUTPUT_DEVICE_TYPE IS NOT NULL
+    ORDER BY START_TIME DESC
+)
+WHERE ROWNUM = 1;
 EXIT;
 EOF
-)
+        )
 
         # Fetching backup details
         backup_details=$(sqlplus -s / as sysdba << EOF
@@ -68,30 +119,30 @@ WHERE
     SYSDATE - START_TIME <= 7;
 EXIT;
 EOF
-)
+        )
 
         # Fetching feature usage details and appending to JSON file
         feature_usage=$(sqlplus -s / as sysdba << EOF
-SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF TIMING OFF LINESIZE 1000 LONG 10000
+SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF TIMING OFF LINESIZE 1000 LONG 10000 TRIMSPOOL ON
 SELECT
-    '{' ||
-    '"Hostname": "' || '$server_hostname' || '", ' ||
-    '"Database Name": "' || '$db_name' || '", ' ||
-    '"Feature Name": "' || REPLACE(NAME, '"', '\"') || '", ' ||
-    '"Version": "' || REPLACE(VERSION, '"', '\"') || '", ' ||
-    '"Detected Usages": "' || DETECTED_USAGES || '", ' ||
-    '"Total Samples": "' || TOTAL_SAMPLES || '", ' ||
-    '"Currently Used": "' || CURRENTLY_USED || '", ' ||
-    '"First Usage Date": "' || TO_CHAR(FIRST_USAGE_DATE, 'mm/dd/yyyy') || '", ' ||
-    '"Last Usage Date": "' || TO_CHAR(LAST_USAGE_DATE, 'mm/dd/yyyy') || '", ' ||
-    '"Feature Info": "' || REPLACE(FEATURE_INFO, '"', '\"') || '"},'
+    '{' || CHR(10) ||
+    '"Hostname": "' || TRIM('$server_hostname') || '",' || CHR(10) ||
+    '"Database Name": "' || TRIM('$db_name') || '",' || CHR(10) ||
+    '"Feature Name": "' || TRIM(REPLACE(NAME, '"', '\"')) || '",' || CHR(10) ||
+    '"Version": "' || TRIM(REPLACE(VERSION, '"', '\"')) || '",' || CHR(10) ||
+    '"Detected Usages": "' || TRIM(TO_CHAR(DETECTED_USAGES)) || '",' || CHR(10) ||
+    '"Total Samples": "' || TRIM(TO_CHAR(TOTAL_SAMPLES)) || '",' || CHR(10) ||
+    '"Currently Used": "' || TRIM(CURRENTLY_USED) || '",' || CHR(10) ||
+    '"First Usage Date": "' || TRIM(TO_CHAR(FIRST_USAGE_DATE, 'dd/mm/yyyy')) || '",' || CHR(10) ||
+    '"Last Usage Date": "' || TRIM(TO_CHAR(LAST_USAGE_DATE, 'dd/mm/yyyy')) || '",' || CHR(10) ||
+    '"Feature Info": "' || TRIM(SUBSTR(REPLACE(FEATURE_INFO, '"', '\"'), 1, 4000)) || '"' || CHR(10) || '},'
 FROM
     DBA_FEATURE_USAGE_STATISTICS
 WHERE
     CURRENTLY_USED = 'TRUE';
 EXIT;
 EOF
-)
+        )
 
         # Append feature usage data to JSON file
         echo "$feature_usage" >> $feature_usage_output_file
@@ -106,14 +157,92 @@ EOF
         device_backup_type=$(echo "$sql_output" | sed -n '6p')
 
         # Writing main data to the CSV file
-        echo "$hostname,$db_name,$db_size,$archivelog_mode,$software_version,$oracle_home,$alert_log_path,$database_role,$device_backup_type" >> $output_file
+        echo "$hostname,$db_name,$db_size,$archivelog_mode,$software_version,$oracle_home,$alert_log_path,$database_role,$device_backup_type,$output_file" >> $output_file
 
         # Writing backup details to the CSV file
         while IFS= read -r backup_line; do
-            echo "$hostname,$db_name,$backup_line" >> $backup_output_file
+            echo "$hostname,$db_name,$backup_line,$backup_output_file" >> $backup_output_file
         done <<< "$backup_details"
+
+        # Extracting connected machines information
+        connected_machines=$(sqlplus -s / as sysdba <<EOF
+SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LINESIZE 300
+SELECT DISTINCT machine FROM gv\$session;
+EXIT;
+EOF
+        )
+
+        # Writing results to the CSV file for connected machines
+        while IFS= read -r machine; do
+            if [[ -n "$machine" ]]; then # Checking if machine name is not empty
+                echo "$server_hostname,$db_name,$machine,$oracle_connected_machines_csv" >> $oracle_connected_machines_csv
+            fi
+        done <<< "$connected_machines"
     fi
 done < /etc/oratab
 
 # Remove the last comma and close the JSON array
 sed -i '$ s/},$/}]/' $feature_usage_output_file
+
+# Fetching ASM disks info
+# Checking if +ASM instance exists
+ASM_LINE=$(grep '+ASM' "/etc/oratab" | grep -v '^#' | head -n 1)
+if [[ ! -z "$ASM_LINE" ]]; then
+    ORACLE_SID=$(echo "$ASM_LINE" | cut -d: -f1)
+    ORACLE_HOME=$(echo "$ASM_LINE" | cut -d: -f2)
+    export ORACLE_HOME
+    export ORACLE_SID
+    export PATH=$ORACLE_HOME/bin:$PATH
+    # SQL query to check ASM disk space usage
+    sqlplus -s / as sysdba <<EOF > "$asm_disk_usage_txt"
+SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+SELECT
+    NAME || ',' ||
+    ROUND(free_mb / 1024, 2) || ',' ||
+    ROUND(total_mb / 1024, 2) || ',' ||
+    ROUND((total_mb - free_mb) / 1024, 2) || ',' ||
+    ROUND(((total_mb - free_mb) / total_mb) * 100, 2) || ',' ||
+    ROUND((free_mb / total_mb) * 100, 2)
+FROM
+    v\$asm_diskgroup
+ORDER BY
+    1;
+EOF
+    # Saving ASM disk usage data to CSV
+    while IFS=, read -r name free_gb total_gb used_gb used_percent free_percent; do
+        echo "$server_hostname,$name,$free_gb,$total_gb,$used_gb,$used_percent,$free_percent,$asm_disk_usage_csv" >> "$asm_disk_usage_csv"
+    done < "$asm_disk_usage_txt"
+else
+    echo "Instance +ASM not found in oratab, skipping ASM disk usage query."
+fi
+if [[ ! -z "$ASM_LINE" ]]; then
+    # Gathering ASM disk information
+    sqlplus -s / as sysdba <<EOF > "$asm_disks_sql_txt"
+SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF LINESIZE 300
+SELECT dg.NAME || ',' || d.NAME || ',' || d.PATH || ',' || ROUND(d.TOTAL_MB / 1024, 2) FROM V\$ASM_DISK d JOIN V\$ASM_DISKGROUP dg ON d.GROUP_NUMBER = dg.GROUP_NUMBER ORDER BY dg.NAME, d.NAME;
+EOF
+    # Processing and saving ASM disk data to CSV
+    while IFS=, read -r group name path size; do
+        # Determine the separator used in the path variable
+        if [[ "$path" == *"/"* ]]; then
+            separator="/"
+        elif [[ "$path" == *":"* ]]; then
+            separator=":"
+        else
+            separator=""
+        fi
+        # Extract disk name from path based on separator
+        disk_name_from_path=$(echo "$path" | rev | cut -d"$separator" -f1 | rev)
+        # Find device path using disk name
+        device_path=$(blkid | grep "LABEL=\"$disk_name_from_path\"" | awk -F: '{print $1}')
+        # Append device path to CSV based on its availability
+        if [[ ! -z "$device_path" ]]; then
+            echo "$server_hostname,$group,$name,$path,$size,$device_path,$asm_disks_info_csv" >> $asm_disks_info_csv
+        else
+            echo "$server_hostname,$group,$name,$path,$size,,$asm_disks_info_csv" >> $asm_disks_info_csv
+        fi
+    done < "$asm_disks_sql_txt"
+fi
+
+# Set permissions for the inventory directory
+chmod -R 755 "$inventory_dir"
